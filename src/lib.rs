@@ -80,7 +80,7 @@ macro_rules! export_bot {
         /// - Calls `<$bot>::next_move()`
         /// - Writes the result as a null-terminated string back into WASM memory
         /// - Returns pointer to the result
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         pub extern "C" fn next_move(ptr: i32, len: i32) -> i32 {
             // Safety: we are the sole user of WASM linear memory
             let input_slice = unsafe { std::slice::from_raw_parts(ptr as *const u8, len as usize) };
