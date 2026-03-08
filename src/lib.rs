@@ -117,8 +117,8 @@ pub trait LudusBot {
 ///
 /// # Example
 /// ```rust
-/// fn next_move(state: &GameState) -> String {
-///     ludus_sdk::random_move(state)
+/// ///fn next_move(state: &GameState) -> String {
+///     ///ludus_sdk::random_move(state)
 /// }
 /// ```
 pub fn random_move(state: &GameState) -> String {
@@ -182,7 +182,7 @@ pub fn first_move(state: &GameState) -> String {
 /// # Usage
 /// Place this at the bottom of your bot file:
 /// ```rust
-/// export_bot!(MyBotType);
+/// ///export_bot!(MyBotType);
 /// ```
 #[macro_export]
 macro_rules! export_bot {
