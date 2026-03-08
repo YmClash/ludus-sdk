@@ -198,7 +198,7 @@ macro_rules! export_bot {
         /// - Writes the result as a null-terminated string back into WASM memory
         /// - Returns pointer to the result
         // #[no_mangle]
-        #[unsage(no_mangle)]
+        #[unsafe(no_mangle)]
         pub extern "C" fn next_move(ptr: i32, len: i32) -> i32 {
             let input_slice = unsafe { std::slice::from_raw_parts(ptr as *const u8, len as usize) };
 
