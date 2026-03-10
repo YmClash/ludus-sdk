@@ -1,89 +1,97 @@
 /// Ludus Bot SDK
 ///
-/// # How to write a bot
-///
-/// 1. Add this crate as a dependency
-/// 2. Implement the `LudusBot` trait
-/// 3. Use the `export_bot!` macro to export it
-/// 4. Compile with: `cargo build --release --target wasm32-unknown-unknown`
-/// 5. Upload the resulting `.wasm` file to your Ludus profile
+/// # Write a bot
+/// 1. Implement the [`LudusBot`] trait
+/// 2. Use [`export_bot!`] to export your bot
+/// 3. Compile: `cargo build --release --target wasm32-unknown-unknown`
+/// 4. Upload the `.wasm` file to your Ludus profile
 ///
 /// # Minimal example
 /// ```rust
 /// use ludus_sdk::{LudusBot, GameState, export_bot};
 ///
 /// pub struct MyBot;
-///
 /// impl LudusBot for MyBot {
 ///     fn next_move(state: &GameState) -> String {
 ///         ludus_sdk::random_move(state)
 ///     }
 /// }
-///
 /// export_bot!(MyBot);
+/// ```
+///
+/// # Neural bot (requires `features = ["neural"]`)
+/// ```rust
+/// use ludus_sdk::{LudusBot, GameState, neural, export_bot};
+///
+/// const MODEL: &[u8] = include_bytes!("../models/chess_eval.onnx");
+///
+/// pub struct NeuralBot;
+/// impl LudusBot for NeuralBot {
+///     fn next_move(state: &GameState) -> String {
+///         neural::best_move(MODEL, state)
+///             .unwrap_or_else(|| ludus_sdk::random_move(state))
+///     }
+/// }
+/// export_bot!(NeuralBot);
 /// ```
 use serde::{Deserialize, Serialize};
 
-// ─── Game State (what the server sends to your bot) ─────
+// ─── Neural module (feature-gated) ──────────────────────────────────────────
+#[cfg(feature = "neural")]
+pub mod neural;
 
-/// The game state your bot receives. This is a subset of the full
-/// game state, serialized as JSON by the Ludus server.
+// ─── Game State ──────────────────────────────────────────────────────────────
+
+/// The game state your bot receives, serialized as JSON by the Ludus server.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameState {
-    /// Whose turn it is: "white" or "black" (Chess/Checkers), or "0"/"1" (Ludo)
+    /// Whose turn: `"white"` / `"black"` (Chess, Checkers) or `"0"` / `"1"` (Ludo).
     pub turn: String,
 
-    /// Current game status: "InProgress", "Check", "Checkmate", "Draw", etc.
+    /// Game status: `"InProgress"`, `"Check"`, `"Checkmate"`, `"Draw"`, etc.
     pub status: String,
 
-    /// List of legal moves in UCI notation (e.g. "e2e4", "12-16", "47-0").
-    /// Your bot MUST return one of these strings.
+    /// Legal moves in UCI notation (`"e2e4"`, `"e7e8q"`, `"12-16"`, …).
+    /// **Your bot must return one of these strings.**
     pub legal_moves: Vec<String>,
 
-    /// Move history (all moves played so far as algebraic notation)
+    /// Move history (algebraic notation, oldest first).
     pub move_history: Vec<String>,
 
-    /// Board state as a 2D array [row][col].
+    /// Board state as a 2D array `[row][col]`.
     ///
-    /// **Chess**: "wK", "bP", "wR", etc. — empty square = "".
-    /// Rows: 0 = rank 1 (white back rank), 7 = rank 8 (black back rank).
-    /// Cols: 0 = file a, 7 = file h.
+    /// **Chess**: `"wK"`, `"bP"`, … — empty = `""`.
+    /// Row 0 = rank 1 (white back rank), col 0 = file a.
     ///
-    /// **Checkers**: "r" (red), "b" (black), "R" (red king), "B" (black king), "" (empty).
+    /// **Checkers**: `"r"` / `"b"` / `"R"` (king) / `"B"` (king) / `""`.
     ///
-    /// **Ludo**: [[red_tokens...], [blue_tokens...], [current_player, last_dice_roll]]
-    /// Token positions: "Yard", "T{n}" (track), "H{n}" (home stretch), "Home".
+    /// **Ludo**: `[[red tokens], [blue tokens], [current_player, dice]]`.
     #[serde(default)]
     pub board: Vec<Vec<String>>,
 }
 
 impl GameState {
-    /// Returns true if no moves are available (game is over).
+    /// Returns `true` if the game is over (no legal moves).
     pub fn is_terminal(&self) -> bool {
         self.legal_moves.is_empty()
     }
 
-    /// Returns the piece at a chess square (e.g. "e2" → "wP").
-    /// Returns `""` for empty or if coordinates are invalid.
-    /// Only meaningful for Chess games.
+    /// Returns the piece at a chess square (`"e2"` → `"wP"`, `""` if empty).
     pub fn piece_at(&self, square: &str) -> &str {
-        let bytes = square.as_bytes();
-        if bytes.len() < 2 {
+        let b = square.as_bytes();
+        if b.len() < 2 {
             return "";
         }
-        let col = (bytes[0].wrapping_sub(b'a')) as usize;
-        let row = (bytes[1].wrapping_sub(b'1')) as usize;
-        if row >= 8 || col >= 8 || self.board.len() <= row {
-            return "";
-        }
-        if self.board[row].len() <= col {
-            return "";
-        }
-        &self.board[row][col]
+        let col = b[0].wrapping_sub(b'a') as usize;
+        let row = b[1].wrapping_sub(b'1') as usize;
+        self.board
+            .get(row)
+            .and_then(|r| r.get(col))
+            .map(|s| s.as_str())
+            .unwrap_or("")
     }
 
-    /// Get the color prefix of the piece at a square: "w", "b", or "".
-    /// Useful for Chess bots.
+    /// Color prefix of the piece at a chess square: `"w"`, `"b"`, or `""`.
     pub fn piece_color_at(&self, square: &str) -> &str {
         let p = self.piece_at(square);
         if p.starts_with('w') {
@@ -96,31 +104,22 @@ impl GameState {
     }
 }
 
-// ─── Bot Trait ───────────────────────────────────────────
+// ─── Bot Trait ───────────────────────────────────────────────────────────────
 
 /// Implement this trait to define your bot's strategy.
 ///
-/// `next_move` receives the full game state and must return
-/// one of the strings in `state.legal_moves`.
+/// `next_move` receives the full game state and must return one of the
+/// strings in `state.legal_moves`.
 pub trait LudusBot {
     fn next_move(state: &GameState) -> String;
 }
 
-// ─── Built-in helpers ────────────────────────────────────
+// ─── Built-in helpers ────────────────────────────────────────────────────────
 
-/// Pick a pseudo-random legal move.
+/// Pick a pseudo-random legal move (recommended default).
 ///
-/// Uses a simple LCG seeded from the game history to avoid deterministic
-/// repetition. **This is the recommended default for basic bots** — it
-/// prevents threefold-repetition draws that occur when always picking
-/// `legal_moves[0]`.
-///
-/// # Example
-/// ```rust
-/// ///fn next_move(state: &GameState) -> String {
-///     ///ludus_sdk::random_move(state)
-/// }
-/// ```
+/// Uses a LCG seeded from game history — avoids the threefold-repetition
+/// Draw that always occurs when picking `legal_moves[0]`.
 pub fn random_move(state: &GameState) -> String {
     if state.legal_moves.is_empty() {
         return String::new();
@@ -128,25 +127,23 @@ pub fn random_move(state: &GameState) -> String {
     if state.legal_moves.len() == 1 {
         return state.legal_moves[0].clone();
     }
-
-    // Seed from the number of moves played + XOR of move string lengths
-    // (no OS randomness needed — works in WASM/no_std)
-    let seed = lcg_seed(state);
-    let idx = (seed as usize) % state.legal_moves.len();
+    let idx = (lcg_seed(state) as usize) % state.legal_moves.len();
     state.legal_moves[idx].clone()
 }
 
-/// LCG-based seed derived from game state (deterministic, WASM-safe).
-fn lcg_seed(state: &GameState) -> u64 {
-    let mut s: u64 = 0x9e3779b97f4a7c15; // fixed golden-ratio seed
+/// Always pick the first legal move. **Causes Draw by repetition** in
+/// symmetric positions — prefer [`random_move`].
+pub fn first_move(state: &GameState) -> String {
+    state.legal_moves.first().cloned().unwrap_or_default()
+}
 
-    // Mix in move history length
+/// LCG-based seed derived from game history (no OS randomness, WASM-safe).
+fn lcg_seed(state: &GameState) -> u64 {
+    let mut s: u64 = 0x9e3779b97f4a7c15;
     s = s.wrapping_add(state.move_history.len() as u64);
     s = s
         .wrapping_mul(6364136223846793005)
         .wrapping_add(1442695040888963407);
-
-    // Mix in each move string (last 4 moves to stay fast)
     for mv in state.move_history.iter().rev().take(4) {
         for b in mv.bytes() {
             s ^= b as u64;
@@ -155,50 +152,24 @@ fn lcg_seed(state: &GameState) -> u64 {
                 .wrapping_add(1442695040888963407);
         }
     }
-
-    // Mix in legal_moves count (varies with position)
     s ^= state.legal_moves.len() as u64;
-    s = s
-        .wrapping_mul(6364136223846793005)
-        .wrapping_add(1442695040888963407);
-
-    s
+    s.wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407)
 }
 
-/// Pick the first legal move. Useful as a deterministic baseline,
-/// but **will cause Draw by repetition** in symmetric positions — use
-/// `random_move` instead for real bots.
-pub fn first_move(state: &GameState) -> String {
-    state.legal_moves.first().cloned().unwrap_or_default()
-}
+// ─── WASM Export Macro ───────────────────────────────────────────────────────
 
-// ─── WASM Export Macro ──────────────────────────────────
-
-/// Export your bot as a WASM function.
+/// Export your bot as a WASM function callable by the Ludus server.
 ///
-/// This macro generates the `next_move(ptr: i32, len: i32) -> i32`
-/// function that the Ludus server will call.
-///
-/// # Usage
-/// Place this at the bottom of your bot file:
-/// ```rust
-/// ///export_bot!(MyBotType);
-/// ```
+/// Generates the `next_move(ptr: i32, len: i32) -> i32` ABI function.
+/// When compiled with `features = ["neural"]`, also exports `__LUDUS_NEURAL__`
+/// so the sandbox automatically grants unlimited inference fuel.
 #[macro_export]
 macro_rules! export_bot {
     ($bot:ty) => {
-        /// Static buffer for the bot's response string.
         static mut RESPONSE_BUF: [u8; 256] = [0u8; 256];
 
-        /// Entry point called by the Ludus server.
-        ///
-        /// - Reads JSON game state from WASM memory at `ptr` for `len` bytes
-        /// - Parses it as a `GameState`
-        /// - Calls `<$bot>::next_move()`
-        /// - Writes the result as a null-terminated string back into WASM memory
-        /// - Returns pointer to the result
-        // #[no_mangle]
-        #[unsafe(no_mangle)]
+        #[no_mangle]
         pub extern "C" fn next_move(ptr: i32, len: i32) -> i32 {
             let input_slice = unsafe { std::slice::from_raw_parts(ptr as *const u8, len as usize) };
 
@@ -220,5 +191,11 @@ macro_rules! export_bot {
                 RESPONSE_BUF.as_ptr() as i32
             }
         }
+
+        // Signal to the Ludus sandbox that this bot requires neural inference fuel.
+        // The sandbox detects this export and removes the fuel cap automatically.
+        #[cfg(feature = "neural")]
+        #[no_mangle]
+        pub static __LUDUS_NEURAL__: i32 = 1;
     };
 }

@@ -7,9 +7,22 @@ description = "Ludus Bot SDK — Write your bot in Rust and compile it to WASM"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+default = []
+# Enable neural inference via ONNX models (tract-onnx).
+# Bots using this feature get unlimited fuel in the Ludus sandbox.
+# Usage: ludus-sdk = { features = ["neural"] }
+neural = ["dep:tract-onnx"]
+
+
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1"
+
+# ONNX inference engine — pure Rust, WASM-compatible.
+# Only included when `neural` feature is enabled.
+tract-onnx = { version = "0.21", optional = true }
+
 
 [profile.release]
 # Optimize for size to reduce the final WASM binary size
