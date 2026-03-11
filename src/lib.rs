@@ -169,7 +169,7 @@ macro_rules! export_bot {
     ($bot:ty) => {
         static mut RESPONSE_BUF: [u8; 256] = [0u8; 256];
 
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         pub extern "C" fn next_move(ptr: i32, len: i32) -> i32 {
             let input_slice = unsafe { std::slice::from_raw_parts(ptr as *const u8, len as usize) };
 
