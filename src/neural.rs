@@ -172,8 +172,8 @@ pub fn run_model_raw(
     }
 
     // Build tensor
-    let arr = tract_onnx::tract_ndarray::Array::from_shape_vec(
-        tract_onnx::tract_ndarray::IxDyn(input_shape),
+    let arr = tract_ndarray::Array::from_shape_vec(
+        tract_ndarray::IxDyn(input_shape),
         input,
     )
         .ok()?;
