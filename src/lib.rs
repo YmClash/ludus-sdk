@@ -1,3 +1,18 @@
+// ─── WASM: getrandom stub ────────────────────────────────────────────────────
+// tract-onnx pulls `rand` / `getrandom` as transitive deps.
+// On `wasm32-unknown-unknown` (wasmtime, no browser JS), getrandom has no
+// default backend and fails to compile. We register a zeroing stub — neural
+// inference itself never calls getrandom, so this is perfectly safe.
+#[cfg(target_arch = "wasm32")]
+mod wasm_getrandom {
+    fn stub(buf: &mut [u8]) -> Result<(), getrandom::Error> {
+        for b in buf.iter_mut() { *b = 0; }
+        Ok(())
+    }
+    getrandom::register_custom_getrandom!(stub);
+}
+
+
 /// Ludus Bot SDK
 ///
 /// # Write a bot
