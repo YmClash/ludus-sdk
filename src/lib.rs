@@ -54,7 +54,7 @@ use serde::{Deserialize, Serialize};
 // ─── Neural module (feature-gated) ──────────────────────────────────────────
 #[cfg(feature = "neural")]
 pub mod neural;
-
+pub mod micro_neural;
 // ─── Game State ──────────────────────────────────────────────────────────────
 
 /// The game state your bot receives, serialized as JSON by the Ludus server.
