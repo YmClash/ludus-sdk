@@ -19,11 +19,11 @@
 //!
 //! pub struct NeuralBot;
 ///  impl LudusBot for NeuralBot {
-///!     fn next_move(state: &GameState) -> String {
-//!         ludus_sdk::micro_neural::best_move(WEIGHTS, state)
-//!             .unwrap_or_else(|| ludus_sdk::random_move(state))
-//!     }
-//! }
+///      fn next_move(state: &GameState) -> String {
+//         ludus_sdk::micro_neural::best_move(WEIGHTS, state)
+//             .unwrap_or_else(|| ludus_sdk::random_move(state))
+//     }
+// }
 ///
 
 use crate::GameState;
