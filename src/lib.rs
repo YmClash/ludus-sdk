@@ -211,7 +211,7 @@ macro_rules! export_bot {
         // Detected via module.exports() in wasm.rs — safe for all bot types.
         // micro_neural needs ~10M instructions; standard bots use <1M anyway.
         // #[cfg(feature = "neural")]
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         pub static __LUDUS_NEURAL__: i32 = 1;
     };
 }
