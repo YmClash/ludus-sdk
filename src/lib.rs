@@ -51,10 +51,18 @@ mod wasm_getrandom {
 /// ```
 use serde::{Deserialize, Serialize};
 
-// ─── Neural module (feature-gated) ──────────────────────────────────────────
+// ─── Neural module (feature-gated, tract-onnx, ~15MB WASM) ──────────────────
 #[cfg(feature = "neural")]
 pub mod neural;
+
+// ─── Micro-neural (no deps, ~100KB WASM) ─────────────────────────────────────
+// Recommended for most bots. Uses a custom binary weight format (.bin).
+// Export your model with: python ludus-nn/src/export_weights.py
 pub mod micro_neural;
+
+// ─── NNUE (768 binary features, faster than micro_neural on large legal-move sets) ───
+// No external deps. Export model with: python ludus-nn/src/export_nnue.py
+pub mod nnue;
 // ─── Game State ──────────────────────────────────────────────────────────────
 
 /// The game state your bot receives, serialized as JSON by the Ludus server.
@@ -215,3 +223,65 @@ macro_rules! export_bot {
         pub static __LUDUS_NEURAL__: i32 = 1;
     };
 }
+
+/// Export a NNUE-powered bot as a WASM function callable by the Ludus server.
+///
+/// **Rétrocompatible** : generates the same `next_move(ptr, len) -> ptr` ABI
+/// as [`export_bot!`] — no server changes required.
+///
+/// Differences from `export_bot!`:
+/// - Your bot uses `nnue::best_move()` internally for ~4× faster evaluation.
+/// - Exports `__LUDUS_NNUE__` (alongside `__LUDUS_NEURAL__`) for future
+///   NNUE-aware orchestration.
+///
+/// # Usage
+/// ```rust
+/// const NNUE: &[u8] = include_bytes!("../models/chess_eval.ludus-nnue");
+///
+/// pub struct NnueBot;
+//// impl LudusBot for NnueBot {
+///     fn next_move(state: &GameState) -> String {
+///         ludus_sdk::nnue::best_move(NNUE, state)
+///             .unwrap_or_else(|| ludus_sdk::random_move(state))
+///     }
+/// }
+/// export_nnue_bot!(NnueBot);
+/// ```
+#[macro_export]
+macro_rules! export_nnue_bot {
+    ($bot:ty) => {
+        static mut __NNUE_RESPONSE_BUF: [u8; 256] = [0u8; 256];
+
+        #[no_mangle]
+        pub extern "C" fn next_move(ptr: i32, len: i32) -> i32 {
+            let input_slice = unsafe { std::slice::from_raw_parts(ptr as *const u8, len as usize) };
+
+            let result: String = if let Ok(json_str) = std::str::from_utf8(input_slice) {
+                if let Ok(state) = serde_json::from_str::<ludus_sdk::GameState>(json_str) {
+                    <$bot>::next_move(&state)
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            };
+
+            let bytes = result.as_bytes();
+            let write_len = bytes.len().min(255);
+            unsafe {
+                __NNUE_RESPONSE_BUF[..write_len].copy_from_slice(&bytes[..write_len]);
+                __NNUE_RESPONSE_BUF[write_len] = 0;
+                __NNUE_RESPONSE_BUF.as_ptr() as i32
+            }
+        }
+
+        // Same fuel signal as export_bot! (50M instruction budget)
+        #[no_mangle]
+        pub static __LUDUS_NEURAL__: i32 = 1;
+
+        // Additional signal: NNUE-capable bot (reserved for future orchestration)
+        #[no_mangle]
+        pub static __LUDUS_NNUE__: i32 = 1;
+    };
+}
+
