@@ -27,16 +27,16 @@
 //! # Quickstart
 //! ```rust
 //! const NNUE: &[u8] = include_bytes!("../models/chess_eval.ludus-nnue");
-//!
-//! pub struct NnueBot;
-///! impl LudusBot for NnueBot {
-//!     fn next_move(state: &GameState) -> String {
-//!         nnue::best_move(NNUE, state)
-//!             .unwrap_or_else(|| ludus_sdk::random_move(state))
-//!     }
-//! }
-//! export_nnue_bot!(NnueBot);
-//! ```
+//
+// pub struct NnueBot;
+// impl LudusBot for NnueBot {
+//     fn next_move(state: &GameState) -> String {
+//         nnue::best_move(NNUE, state)
+//             .unwrap_or_else(|| ludus_sdk::random_move(state))
+//     }
+// }
+// export_nnue_bot!(NnueBot);
+// ```
 
 use crate::GameState;
 
